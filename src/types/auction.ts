@@ -1,4 +1,4 @@
-import type { AuctionStatus, AuctionType, AutoBidStatus, BidStatus, SealedBidStatus } from './enums'
+import type { AuctionStatus, AuctionType, AutoBidStatus, BidStatus, SealedBidStatus, ParticipantQualificationStatus, DepositStatus, ParticipantJoinStatus } from './enums'
 import type { MoneyDto } from './api'
 
 export interface AuctionDto {
@@ -42,11 +42,21 @@ export interface AuctionDto {
   createdAt: string
 }
 
+export interface ParticipantInfoDto {
+  qualificationStatus?: ParticipantQualificationStatus
+  joinStatus?: ParticipantJoinStatus
+  depositStatus?: DepositStatus
+  depositAmount?: number
+  depositCurrency?: string
+}
+
 export interface AuctionDetailDto {
   auction: AuctionDto
   item: AuctionItemDto
   recentBids: BidDto[]
   priceHistory: PriceHistoryPoint[]
+  isWatched?: boolean
+  currentUserParticipant?: ParticipantInfoDto
 }
 
 export interface AuctionItemDto {
@@ -99,6 +109,13 @@ export interface BidDto {
   createdAt: string
 }
 
+export interface PlaceBidResultDto {
+  bid: BidDto
+  autoBidsCascaded: number
+  finalPrice: number
+  wasImmediatelyOutbid: boolean
+}
+
 export interface AutoBidDto {
   id: string
   auctionId: string
@@ -127,10 +144,13 @@ export interface SealedBidDto {
 }
 
 export interface WinnerOfferDto {
-  id: string
-  offeredPrice: number
+  offerId: string
+  auctionId: string
+  auctionTitle: string
+  offerAmount: number
+  currency: string
   status: string
-  expiresAt: string
+  expiresAt: string | null
   createdAt: string
 }
 
@@ -145,11 +165,13 @@ export interface BidNotification {
   bidId: string
   bidderId: string
   bidderDisplayName: string
+  bidderName?: string
   amount: number
+  currency?: string
   currentPrice: number
   minimumNextBid: number
-  currency: string
   totalBids: number
+  bidCount?: number
   isAutoBid: boolean
   timestamp: string
 }
@@ -157,8 +179,10 @@ export interface BidNotification {
 export interface OutbidNotification {
   auctionId: string
   newHighAmount: number
+  newAmount?: number
   minimumNextBid: number
   newHighBidderDisplayName: string
+  currency?: string
 }
 
 export interface AuctionStartedNotification {
@@ -171,16 +195,18 @@ export interface AuctionEndedNotification {
   auctionId: string
   winnerId?: string
   winnerDisplayName?: string
+  winnerName?: string
   finalPrice: number
-  currency: string
   totalBids: number
   reserveMet: boolean
+  currency?: string
 }
 
 export interface AuctionExtendedNotification {
   auctionId: string
   newEndTime: string
   extensionMinutes: number
+  extensionCount?: number
 }
 
 export interface AuctionCancelledNotification {
@@ -193,8 +219,8 @@ export interface PriceUpdateNotification {
   currentPrice: number
   minimumNextBid: number
   totalBids: number
-  remainingTime?: string
-  currency: string
+  remainingTime: string
+  currency?: string
 }
 
 export interface BuyNowReservedNotification {
@@ -219,7 +245,18 @@ export interface BuyNowNotification {
   auctionId: string
   buyerId: string
   price: number
-  currency: string
+  currency?: string
+}
+
+export interface ItemQuestionNotification {
+  itemId: string
+  questionId: string
+  askerId: string
+  askerDisplayName: string
+  question: string
+  answer?: string | null
+  isPublic: boolean
+  createdAt: string
 }
 
 export interface BuyNowCheckoutDto {
@@ -229,23 +266,6 @@ export interface BuyNowCheckoutDto {
   buyNowPrice: MoneyDto
   depositAppliedAmount: MoneyDto
   amountDue: MoneyDto
-}
-
-export interface ItemQuestionNotification {
-  itemId: string
-  questionId: string
-  askerId: string
-  askerDisplayName: string
-  question: string
-  answer?: string
-  isPublic: boolean
-  createdAt: string
-}
-
-export interface HubErrorNotification {
-  code: string
-  message: string
-  errors?: Record<string, string[]>
 }
 
 // Filters

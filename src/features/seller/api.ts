@@ -1,10 +1,12 @@
-import apiClient, { extractArray, idempotentPost } from '@/lib/axios'
+import apiClient, { extractArray } from '@/lib/axios'
 import { queryKeys } from '@/lib/queryClient'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/hooks/useAuth'
 import type {
   SellerProfileDto,
   CreateSellerProfileRequest,
   VerificationDto,
+  VerificationSummaryDto,
   VerificationDocumentDto,
   PublicSellerItemDto,
   PagedList,
@@ -27,7 +29,7 @@ export function useCreateSellerProfile() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (data: CreateSellerProfileRequest) => {
-      const res = await idempotentPost<SellerProfileDto>('/me/seller-profile', data)
+      const res = await apiClient.post<SellerProfileDto>('/me/seller-profile', data)
       return res.data
     },
     onSuccess: () => {
@@ -71,15 +73,30 @@ export function useSellerItems(sellerId: string, params?: PaginationParams) {
   })
 }
 
+// ── Seller Reviews ─────────────────────────────────────────────────
+
+export function useSellerReviews(sellerId: string, params?: { pageNumber?: number; pageSize?: number }) {
+  return useQuery({
+    queryKey: [...queryKeys.seller.all, sellerId, 'reviews', params],
+    queryFn: async () => {
+      const res = await apiClient.get(`/api/sellers/${sellerId}/reviews`, { params })
+      return res.data
+    },
+    enabled: !!sellerId,
+  })
+}
+
 // ── Verification ────────────────────────────────────────────────────
 
 export function useMyVerifications() {
+  const { isAuthenticated } = useAuth()
   return useQuery({
     queryKey: queryKeys.seller.verifications(),
     queryFn: async () => {
       const res = await apiClient.get('/me/verifications')
-      return extractArray<VerificationDto>(res.data)
+      return extractArray<VerificationSummaryDto>(res.data)
     },
+    enabled: isAuthenticated,
   })
 }
 
@@ -87,7 +104,7 @@ export function useCreateVerification() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (data: { verificationType: string }) => {
-      const res = await idempotentPost<VerificationDto>('/me/verifications', data)
+      const res = await apiClient.post<VerificationDto>('/me/verifications', data)
       return res.data
     },
     onSuccess: () => {
@@ -100,7 +117,7 @@ export function useSubmitVerification() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await idempotentPost<VerificationDto>(`/me/verifications/${id}/submit`)
+      const res = await apiClient.post<VerificationDto>(`/me/verifications/${id}/submit`)
       return res.data
     },
     onSuccess: () => {
@@ -125,14 +142,35 @@ export function useUpdateVerification() {
 export function useUploadVerificationDocument() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async ({ id, file }: { id: string; file: File }) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      const res = await idempotentPost<VerificationDocumentDto>(
-        `/me/verifications/${id}/documents`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } },
+    mutationFn: async ({ verificationId, mediaUploadId, documentType }: { verificationId: string; mediaUploadId: string; documentType: string }) => {
+      const res = await apiClient.post<VerificationDocumentDto>(
+        `/me/verifications/${verificationId}/documents`,
+        { mediaUploadId, documentType },
       )
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.seller.verifications() })
+    },
+  })
+}
+
+export function useVerificationById(id: string) {
+  return useQuery({
+    queryKey: [...queryKeys.seller.verifications(), 'detail', id],
+    queryFn: async () => {
+      const res = await apiClient.get<VerificationDto>(`/me/verifications/${id}`)
+      return res.data
+    },
+    enabled: !!id,
+  })
+}
+
+export function useCreateVerificationDispute() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ verificationId, reason }: { verificationId: string; reason: string }) => {
+      const res = await apiClient.post(`/me/verifications/${verificationId}/disputes`, { reason })
       return res.data
     },
     onSuccess: () => {

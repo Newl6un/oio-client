@@ -1,4 +1,5 @@
-import apiClient, { extractArray, idempotentPost } from '@/lib/axios'
+import { useMemo } from 'react'
+import apiClient, { extractArray } from '@/lib/axios'
 import { queryKeys } from '@/lib/queryClient'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
@@ -75,8 +76,8 @@ export function useSetPhoneNumber() {
 export function useConfirmPhoneNumber() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (data: { code: string }) => {
-      await idempotentPost('/me/phone/confirm', data)
+    mutationFn: async (data: { verificationCode: string }) => {
+      await apiClient.post('/me/phone/confirm', data)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.auth.currentUser() })
@@ -100,7 +101,7 @@ export function useAddAddress() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (data: CreateAddressRequest) => {
-      const res = await idempotentPost<UserAddressDto>('/me/addresses', data)
+      const res = await apiClient.post<UserAddressDto>('/me/addresses', data)
       return res.data
     },
     onSuccess: () => {
@@ -138,7 +139,7 @@ export function useSetDefaultAddress() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (id: string) => {
-      await idempotentPost(`/me/addresses/${id}/default`)
+      await apiClient.patch(`/me/addresses/${id}/default`)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.users.addresses() })
@@ -175,7 +176,7 @@ export function useLoginHistory(params?: PaginationParams) {
 export function useEnable2FA() {
   return useMutation({
     mutationFn: async (provider: string) => {
-      await idempotentPost('/me/two-factor/enable', { provider })
+      await apiClient.post('/me/two-factor/enable', { provider })
     },
   })
 }
@@ -183,7 +184,7 @@ export function useEnable2FA() {
 export function useSetupTotp() {
   return useMutation({
     mutationFn: async () => {
-      const res = await idempotentPost<SetupTotpResponse>('/me/two-factor/setup')
+      const res = await apiClient.post<SetupTotpResponse>('/me/two-factor/setup')
       return res.data
     },
   })
@@ -193,7 +194,7 @@ export function useConfirmTotp() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (data: { code: string }) => {
-      await idempotentPost('/me/two-factor/confirm', data)
+      await apiClient.post('/me/two-factor/confirm', data)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.auth.currentUser() })
@@ -201,11 +202,12 @@ export function useConfirmTotp() {
   })
 }
 
+// SECURITY: BE ignores the code parameter - 2FA can be disabled without TOTP verification. Needs BE fix.
 export function useDisable2FA() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (data: { code: string }) => {
-      await idempotentPost('/me/two-factor/disable', data)
+      await apiClient.post('/me/two-factor/disable', data)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.auth.currentUser() })
@@ -215,9 +217,77 @@ export function useDisable2FA() {
 
 export function useRegenerateRecoveryCodes() {
   return useMutation({
-    mutationFn: async () => {
-      const res = await idempotentPost<{ recoveryCodes: string[] }>('/me/two-factor/recovery-codes')
+    mutationFn: async (code: string) => {
+      const res = await apiClient.post<{ recoveryCodes: string[] }>('/me/two-factor/recovery-codes', { code })
       return res.data
+    },
+  })
+}
+
+// ── Terms & Conditions ───────────────────────────────────────────────
+
+/**
+ * Computes pending terms client-side by comparing active terms with user's accepted terms.
+ * Replaces the broken /me/terms/pending endpoint call.
+ * @param termType - Optional filter by type (e.g., "platform", "seller", "bidder")
+ */
+export function usePendingTerms(termType?: string) {
+  const { data: activeTerms, isLoading: activeLoading } = useQuery({
+    queryKey: [...queryKeys.terms.all, 'active'],
+    queryFn: async () => {
+      const res = await apiClient.get<{ id: string; type: string; version: number; isActive: boolean; contentUrl?: string; fileName?: string }[]>('/terms/active')
+      return res.data
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+
+  const { data: acceptedTerms, isLoading: acceptedLoading } = useAcceptedTerms()
+
+  const pendingTerms = useMemo(() => {
+    if (!activeTerms || !acceptedTerms) return []
+    // BE returns TermsAcceptanceDto with nested Document object
+    // Handle both shapes: flat { termsId } (old) and nested { document: { id } } (actual BE response)
+    const acceptedDocIds = new Set(acceptedTerms.map((a: Record<string, unknown>) => {
+      // Nested shape: { document: { id } }
+      if (a.document && typeof a.document === 'object' && 'id' in a.document) return (a.document as { id: string }).id
+      // Flat shape: { termsId }
+      if (a.termsId) return a.termsId as string
+      // Fallback: { id } (acceptance ID, not document ID — skip)
+      return null
+    }).filter(Boolean) as string[])
+    let pending = activeTerms.filter((t) => !acceptedDocIds.has(t.id))
+    if (termType) {
+      pending = pending.filter((t) => t.type === termType)
+    }
+    return pending
+  }, [activeTerms, acceptedTerms, termType])
+
+  return {
+    data: { hasPending: pendingTerms.length > 0, pendingTerms },
+    isLoading: activeLoading || acceptedLoading,
+  }
+}
+
+export function useAcceptedTerms() {
+  return useQuery({
+    queryKey: queryKeys.terms.myAccepted(),
+    queryFn: async () => {
+      // BE returns TermsAcceptanceDto[]: { id, acceptedAt, ipAddress, userAgent, document: { id, type, version, ... } }
+      const res = await apiClient.get<{ id: string; acceptedAt: string; document: { id: string; type: string; version: number } }[]>('/me/terms')
+      return res.data
+    },
+  })
+}
+
+export function useAcceptTerm() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (termDocumentId: string) => {
+      await apiClient.post(`/me/terms/${termDocumentId}/accept`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.terms.myAccepted() })
+      // Invalidating accepted terms causes usePendingTerms to recompute automatically
     },
   })
 }

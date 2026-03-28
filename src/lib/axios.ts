@@ -1,6 +1,5 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { API_URL, STORAGE_KEYS } from '@/utils/constants'
-import { getAccessToken, setAccessToken, getRefreshToken, setRefreshToken, clearTokens } from '@/lib/tokenStore'
 
 const apiClient = axios.create({
   baseURL: API_URL,
@@ -34,7 +33,7 @@ apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
       config.headers.Authorization = `Bearer ${twoFaToken}`
     }
   } else {
-    const token = getAccessToken()
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -75,14 +74,14 @@ apiClient.interceptors.response.use(
     isRefreshing = true
 
     try {
-      const refreshToken = getRefreshToken()
+      const refreshToken = localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN)
       if (!refreshToken) {
         throw new Error('No refresh token')
       }
 
       const deviceId = getDeviceId()
       // BE requires ExpiredTokenAllowed policy — must send the expired access token
-      const expiredAccessToken = getAccessToken()
+      const expiredAccessToken = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
       const { data } = await axios.post(`${API_URL}/auth/refresh`, {
         refreshToken,
         deviceId,
@@ -96,16 +95,8 @@ apiClient.interceptors.response.use(
       const newAccessToken = data.accessToken as string
       const newRefreshToken = data.refreshToken as string
 
-      setAccessToken(newAccessToken)
-      setRefreshToken(newRefreshToken)
-
-      try {
-        const payload = JSON.parse(atob(newAccessToken.split('.')[1]))
-        const deviceId = payload.deviceId ?? payload.device_id
-        if (deviceId) {
-          localStorage.setItem(STORAGE_KEYS.DEVICE_ID, deviceId)
-        }
-      } catch { /* ignore */ }
+      localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, newAccessToken)
+      localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, newRefreshToken)
 
       processQueue(null, newAccessToken)
 
@@ -115,8 +106,8 @@ apiClient.interceptors.response.use(
       processQueue(refreshError, null)
 
       // Logout: clear tokens and redirect
-      clearTokens()
-      localStorage.removeItem(STORAGE_KEYS.DEVICE_ID)
+      localStorage.removeItem(STORAGE_KEYS.ACCESS_TOKEN)
+      localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
       window.location.href = '/login'
 
       return Promise.reject(refreshError)
@@ -147,7 +138,7 @@ export function getDeviceId(): string | null {
   const stored = localStorage.getItem(STORAGE_KEYS.DEVICE_ID)
   if (stored) return stored
   try {
-    const token = getAccessToken()
+    const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN)
     if (!token) return null
     const payload = JSON.parse(atob(token.split('.')[1]))
     return payload.device_id ?? null

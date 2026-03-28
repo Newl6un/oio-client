@@ -11,7 +11,7 @@ import {
 } from '@ant-design/icons'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router'
-import { useNotifications, useUnreadCount, useMarkAsRead, useMarkAllAsRead } from '@/features/notification/api'
+import { useNotifications, useUnreadCount, useMarkAsRead, useMarkAllAsRead, parseNotificationActions, getActionRoute, getEntityRoute } from '@/features/notification/api'
 import { useNotificationHub } from '@/features/notification/hooks/useNotificationHub'
 import { useAuth } from '@/hooks/useAuth'
 import { NotificationStatus } from '@/types/enums'
@@ -26,29 +26,6 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   order: <ShoppingOutlined />,
   payment: <DollarOutlined />,
   warning: <WarningOutlined />,
-}
-
-const getNotificationLink = (notification: NotificationDto): string => {
-  if (!notification.entityType || !notification.entityId) {
-    return '/me/notifications'
-  }
-  switch (notification.entityType.toLowerCase()) {
-    case 'auction':
-      return `/auctions/${notification.entityId}`
-    case 'item':
-      return `/items/${notification.entityId}`
-    case 'order':
-      return `/me/orders/${notification.entityId}`
-    case 'dispute':
-      return `/me/disputes/${notification.entityId}`
-    case 'wallet':
-    case 'payment':
-      return '/me/wallet'
-    case 'verification':
-      return '/me/seller/verifications'
-    default:
-      return '/me/notifications'
-  }
 }
 
 export function NotificationDropdown() {
@@ -71,7 +48,9 @@ export function NotificationDropdown() {
     if (n.status === NotificationStatus.Unread) {
       markAsRead.mutate(n.id)
     }
-    navigate(getNotificationLink(n))
+    // Navigate to entity if available
+    const route = getEntityRoute(n.entityType, n.entityId)
+    if (route) navigate(route)
   }
 
   const content = useMemo(
@@ -226,6 +205,42 @@ export function NotificationDropdown() {
                     <span style={{ fontSize: 11, color: 'var(--color-text-secondary)', opacity: 0.7 }}>
                       {dayjs(item.createdAt).fromNow()}
                     </span>
+
+                    {/* Action buttons */}
+                    {(() => {
+                      const actions = parseNotificationActions(item.actions)
+                      if (actions.length === 0) return null
+                      return (
+                        <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                          {actions.slice(0, 2).map((action, i) => {
+                            const route = getActionRoute(action, item.entityId)
+                            return (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (route) navigate(route)
+                                }}
+                                style={{
+                                  fontSize: 11,
+                                  fontWeight: 500,
+                                  padding: '3px 10px',
+                                  borderRadius: 4,
+                                  border: '1px solid var(--color-accent)',
+                                  background: 'transparent',
+                                  color: 'var(--color-accent)',
+                                  cursor: route ? 'pointer' : 'not-allowed',
+                                  opacity: route ? 1 : 0.5,
+                                }}
+                              >
+                                {action.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
               )
@@ -271,7 +286,7 @@ export function NotificationDropdown() {
       overlayInnerStyle={{ padding: 0, borderRadius: 4, overflow: 'hidden' }}
     >
       <Badge count={unreadCount} size="small" offset={[-2, 2]}>
-        <Button type="text" icon={<BellOutlined style={{ fontSize: 20 }} />} />
+        <Button type="text" aria-label="Notifications" icon={<BellOutlined style={{ fontSize: 20 }} />} />
       </Badge>
     </Popover>
   )

@@ -14,3 +14,5 @@ export const DEFAULT_CURRENCY = 'VND'
 
 export const AUCTION_EXTENSION_THRESHOLD_MINUTES = 5
 export const MAX_EXTENSIONS_PER_AUCTION = 10
+
+export const USER_HUB_ENABLED = import.meta.env.VITE_ENABLE_USER_HUB !== 'false'

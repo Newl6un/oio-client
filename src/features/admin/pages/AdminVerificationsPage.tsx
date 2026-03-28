@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Typography, Table, Select, Space, Button, App } from 'antd'
+import { Typography, Select, Space, Button, App } from 'antd'
+import { ResponsiveTable } from '@/components/ui/ResponsiveTable'
 import { SafetyCertificateOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
@@ -11,26 +12,22 @@ import type { VerificationDto } from '@/types'
 import type { ColumnsType } from 'antd/es/table'
 
 const STATUS_OPTIONS = [
-  { value: '', label: '' },
+  { value: '', label: 'All' },
   { value: IdentityVerificationStatus.Pending, label: 'Pending' },
+  { value: IdentityVerificationStatus.Submitted, label: 'Submitted' },
+  { value: IdentityVerificationStatus.UnderReview, label: 'Under Review' },
   { value: IdentityVerificationStatus.Approved, label: 'Approved' },
   { value: IdentityVerificationStatus.Rejected, label: 'Rejected' },
-  { value: IdentityVerificationStatus.Unverified, label: 'Unverified' },
 ] as const
 
 export default function AdminVerificationsPage() {
   const { t } = useTranslation('admin')
-  const { t: tc } = useTranslation('common')
   const { message } = App.useApp()
   const navigate = useNavigate()
 
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
   const [statusFilter, setStatusFilter] = useState('')
 
   const { data, isLoading } = usePendingVerifications({
-    pageNumber: page,
-    pageSize,
     ...(statusFilter ? { status: statusFilter } : {}),
   })
 
@@ -123,7 +120,7 @@ export default function AdminVerificationsPage() {
         <Select
           placeholder={t('verifications.filterStatus')}
           value={statusFilter}
-          onChange={(val) => { setStatusFilter(val); setPage(1) }}
+          onChange={(val) => setStatusFilter(val)}
           style={{ width: 200 }}
           allowClear
           onClear={() => setStatusFilter('')}
@@ -134,20 +131,13 @@ export default function AdminVerificationsPage() {
         />
       </Space>
 
-      <Table<VerificationDto>
+      <ResponsiveTable<VerificationDto>
         rowKey="id"
         columns={columns}
-        dataSource={data?.items ?? []}
+        dataSource={(data as any)?.items ?? data ?? []}
         loading={isLoading}
-        scroll={{ x: 800 }}
-        pagination={{
-          current: data?.metadata?.currentPage ?? page,
-          pageSize: data?.metadata?.pageSize ?? pageSize,
-          total: data?.metadata?.totalCount ?? 0,
-          showSizeChanger: true,
-          showTotal: (total) => tc('pagination.total', { total }),
-          onChange: (p, ps) => { setPage(p); setPageSize(ps) },
-        }}
+        mobileMode="list"
+        pagination={{ pageSize: 20 }}
       />
     </div>
   )

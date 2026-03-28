@@ -1,4 +1,4 @@
-import apiClient, { extractArray, idempotentPost } from '@/lib/axios'
+import apiClient, { extractArray } from '@/lib/axios'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { queryKeys } from '@/lib/queryClient'
 import type { PagedList, PaginationParams } from '@/types'
@@ -75,12 +75,12 @@ export function useInspectItem() {
   return useMutation({
     mutationFn: async (data: {
       shipmentId: string
-      conditionOnArrival: string
+      condition: string
       inspectionNotes?: string
-      evidenceMediaIds?: string[]
+      inspectionMediaUploadIds?: string[]
     }) => {
       const { shipmentId, ...body } = data
-      const res = await idempotentPost<WarehouseInspectionDto>(
+      const res = await apiClient.post<WarehouseInspectionDto>(
         `/warehouse/inbound-shipments/${shipmentId}/inspect`,
         body,
       )
@@ -103,7 +103,7 @@ export function useReviewInspection() {
       reason?: string
     }) => {
       const { shipmentId, ...body } = data
-      const res = await idempotentPost<WarehouseInspectionDto>(
+      const res = await apiClient.post<WarehouseInspectionDto>(
         `/warehouse/inbound-shipments/${shipmentId}/review`,
         body,
       )
@@ -136,7 +136,26 @@ export function useCreateStorageLocation() {
       shelf: string
       bin: string
     }) => {
-      const res = await idempotentPost<StorageLocationDto>('/warehouse/storage-locations', data)
+      const res = await apiClient.post<StorageLocationDto>('/warehouse/storage-locations', data)
+      return res.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.warehouse.locations() })
+    },
+  })
+}
+
+export function useUpdateStorageLocation() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, ...data }: {
+      id: string
+      zone: string
+      aisle: string
+      shelf: string
+      bin: string
+    }) => {
+      const res = await apiClient.put<StorageLocationDto>(`/warehouse/storage-locations/${id}`, data)
       return res.data
     },
     onSuccess: () => {
@@ -164,7 +183,7 @@ export function useStoreWarehouseItem() {
   return useMutation({
     mutationFn: async (data: { warehouseItemId: string; storageLocationId: string }) => {
       const { warehouseItemId, ...body } = data
-      const res = await idempotentPost(
+      const res = await apiClient.post(
         `/warehouse/warehouse-items/${warehouseItemId}/store`,
         body,
       )
